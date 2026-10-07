@@ -19,6 +19,9 @@
 <meta name="twitter:title" content="SongGems — Free CC Music Player &amp; Discovery">
 <meta name="twitter:description" content="Stream thousands of free tracks by indie artists under Creative Commons licenses.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%237c5cf0'/%3E%3Cpath d='M40 14v22.5a8.5 8.5 0 1 1-4-7.2V22l-12 3v19.5a8.5 8.5 0 1 1-4-7.2V20z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="mobile-web-app-capable" content="yes">
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"WebApplication","name":"SongGems","url":"https://songgems.kuige.me/","applicationCategory":"MultimediaApplication","operatingSystem":"Web","description":"Free music player streaming Creative Commons tracks from Jamendo — search, playlists and favorites, with per-track license and attribution.","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
 </script>
@@ -185,6 +188,8 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;bac
 .qitem .qn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .qitem .qa{color:var(--tx2);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:90px}
 .qitem .num{color:var(--tx2);font-size:11px;width:18px;flex:none;text-align:right;font-variant-numeric:tabular-nums}
+.qitem{transition:transform .15s}
+.qitem.dragging{opacity:.45;z-index:2;box-shadow:0 6px 18px rgba(0,0,0,.25);transition:none;position:relative}
 .scrim{position:fixed;inset:0;z-index:65;background:rgba(10,8,20,.4);opacity:0;pointer-events:none;transition:.2s}
 .scrim.on{opacity:1;pointer-events:auto}
 
@@ -255,6 +260,7 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;bac
         <button class="tab on" id="tabDiscover" data-i18n="tabDiscover">Discover</button>
         <button class="tab" id="tabFavs"><span data-i18n="tabFavs">Favorites</span> <span id="favCnt"></span></button>
         <button class="tab" id="tabPls" data-i18n="tabPls">Playlists</button>
+        <button class="tab" id="tabHist"><span data-i18n="tabRecent">Recent</span></button>
       </nav>
       <span class="spacer"></span>
       <span class="meta-line" id="srcLine"></span>
@@ -398,7 +404,7 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;bac
 const JAMENDO_CLIENT_ID = '';
 
 const TAGS = ['electronic','chillout','ambient','rock','indie','pop','jazz','classical','hiphop','folk','metal','lounge','soundtrack','rnb'];
-const LS = {cid:'sg_cid',lang:'sg_lang',theme:'sg_theme',vol:'sg_vol',nc:'sg_nc',favs:'sg_favs',pls:'sg_pls',shuf:'sg_shuf',rep:'sg_rep',last:'sg_last'};
+const LS = {cid:'sg_cid',lang:'sg_lang',theme:'sg_theme',vol:'sg_vol',nc:'sg_nc',favs:'sg_favs',pls:'sg_pls',shuf:'sg_shuf',rep:'sg_rep',last:'sg_last',hist:'sg_hist'};
 const PAGE = 32; // tracks per request / scroll page
 const store = {
   get(k,d){ try{ const v=localStorage.getItem(k); return v==null?d:JSON.parse(v);}catch(e){return d;} },
@@ -414,6 +420,7 @@ const S = {
   queue:[], qi:-1, errRun:0, _lastSave:0,
   shuffle:store.get(LS.shuf,false), repeat:store.get(LS.rep,0),
   favs:store.get(LS.favs,[]), pls:store.get(LS.pls,[]),
+  hist:store.get(LS.hist,[]),
   allowNC:store.get(LS.nc,false),
   plTarget:null, seeking:false
 };
@@ -431,7 +438,8 @@ en:{
   h1:'Discover music. <span class="gem">100% Creative&nbsp;Commons.</span>',
   sub:'Search and stream thousands of free tracks by independent artists — every song licensed under Creative Commons, with attribution shown right in the player.',
   searchPh:'Search tracks, artists…', go:'Search',
-  tabDiscover:'Discover', tabFavs:'Favorites', tabPls:'Playlists',
+  tabDiscover:'Discover', tabFavs:'Favorites', tabPls:'Playlists', tabRecent:'Recent',
+  emptyHist:'Nothing played yet — your history shows up here.', histClear:'Clear history', histCleared:'History cleared',
   sortWeek:'Trending this week', sortTotal:'All-time popular',
   homeEmpty:'Connect a free Jamendo key to start streaming — or take a look around with the sample player.',
   connect:'Connect library', trySample:'Preview with sample tracks',
@@ -471,7 +479,8 @@ zh:{
   h1:'发现音乐，<span class="gem">百分百创作共用。</span>',
   sub:'搜索并在线播放数千首独立音乐人的免费曲目——每一首都是创作共用授权，播放器里直接展示署名信息。',
   searchPh:'搜索歌曲、艺术家…', go:'搜索',
-  tabDiscover:'发现', tabFavs:'收藏', tabPls:'歌单',
+  tabDiscover:'发现', tabFavs:'收藏', tabPls:'歌单', tabRecent:'最近',
+  emptyHist:'还没听过歌——播放记录会出现在这里。', histClear:'清空记录', histCleared:'记录已清空',
   sortWeek:'本周热门', sortTotal:'历来最热',
   homeEmpty:'填入免费的 Jamendo 密钥即可开始听歌——或先用示例曲目逛一逛。',
   connect:'连接曲库', trySample:'用示例曲目预览',
@@ -683,6 +692,17 @@ function renderArea(){
     if(!S.favs.length){ box.innerHTML='<div class="statebox"><div class="big">\u2661</div><p>'+esc(t('emptyFavs'))+'</p></div>'; return; }
     box.innerHTML = rheadHtml(titleFor(), S.favs.length)+'<div class="grid">'+S.favs.map(cardHtml).join('')+'</div>';
   }
+  else if(S.view==='hist'){
+    if(!S.hist.length){ box.innerHTML='<div class="statebox"><div class="big">\uD83D\uDD25</div><p>'+esc(t('emptyHist'))+'</p></div>'; return; }
+    box.innerHTML = rheadHtml(titleFor(), S.hist.length)+
+      '<button class="mbtn" id="btnHistClear" style="margin:0 0 14px;padding:4px 12px;font-size:12px">'+esc(t('histClear'))+'</button>'+
+      '<div class="grid">'+S.hist.map(cardHtml).join('')+'</div>';
+    $('#btnHistClear').onclick = ()=>{
+      if(confirm(lang==='zh'?'清空最近播放？':'Clear recently played?')){
+        S.hist=[]; store.set(LS.hist,S.hist); toast(t('histCleared')); renderArea(); updSrcLine();
+      }
+    };
+  }
   else if(S.view==='pls'){
     let inner;
     if(!S.pls.length) inner = '<p style="color:var(--tx2)">'+esc(t('emptyPls'))+'</p>';
@@ -736,11 +756,12 @@ function updSrcLine(){
   const el = $('#srcLine'); if(!el) return;
   let badge = S.mock?' <span class="badge-mock">MOCK</span>':'';
   let src = S.mock?esc(t('srcMock')) : (S.err==='nokey'||!getCidAny()?esc(t('srcNoKey')):esc(t('srcLive')));
-  const n = (S.view==='discover')?S.tracks.length:(S.view==='favs'?S.favs.length:(S.view==='pldetail'?(S.pls.find(p=>p.id===S.plOpen)||{tracks:[]}).tracks.length:null));
+  const n = (S.view==='discover')?S.tracks.length:(S.view==='favs'?S.favs.length:(S.view==='hist'?S.hist.length:(S.view==='pldetail'?(S.pls.find(p=>p.id===S.plOpen)||{tracks:[]}).tracks.length:null)));
   el.innerHTML = (n!=null?'<span>'+esc(t('nTr',{n}))+' · </span>':'')+'<span>'+src+'</span>'+badge;
 }
 function titleFor(){
   if(S.view==='favs') return t('tabFavs');
+  if(S.view==='hist') return t('tabRecent');
   if(S.view==='pls') return t('tabPls');
   if(S.view==='pldetail'){ const pl=S.pls.find(p=>p.id===S.plOpen); return pl?pl.name:''; }
   if(S.q) return t('searchT',{q:S.q});
@@ -775,6 +796,7 @@ function playList(list, idx){
 function loadCur(autoplay){
   const tr = cur(); if(!tr) return;
   if(autoplay === undefined) autoplay = true;
+  if(autoplay) addHist(tr);
   const pos = S.posPending||0; S.posPending = 0;
   au.src = tr.audio;
   if(pos > 0){
@@ -795,6 +817,12 @@ function restoreSession(){
   loadCur(false);          // paused — browser autoplay rules forbid auto-play anyway
   $('#pbar').hidden = false;
   return true;
+}
+function addHist(tr){
+  S.hist = S.hist.filter(x=>x.id!==tr.id);
+  S.hist.unshift({...tr, at:Date.now()});
+  if(S.hist.length>60) S.hist.length = 60;
+  store.set(LS.hist, S.hist);
 }
 function saveSession(force){
   if(!cur()) return;
@@ -893,6 +921,57 @@ function renderQueue(){
     '<span class="qa">'+esc(tr.artist)+'</span>'+
     (i===S.qi&&!au.paused?'<span aria-hidden="true">\u266A</span>':'')+'</div>').join('');
 }
+/* queue interactions: tap = jump, drag (mouse/pen) = reorder */
+(function(){
+  const list = $('#qlist');
+  let drag = null;
+  list.addEventListener('click', e=>{
+    if(drag && drag.suppressClick) return;
+    const it = e.target.closest('.qitem'); if(!it) return;
+    const i = +it.dataset.qi;
+    if(i>=0 && i<S.queue.length && i!==S.qi){ S.qi=i; loadCur(); }
+  });
+  list.addEventListener('pointerdown', e=>{
+    if(e.pointerType==='touch' || e.button!==0) return;
+    const it = e.target.closest('.qitem'); if(!it) return;
+    drag = {i:+it.dataset.qi, y:e.clientY, el:it, moved:false, suppressClick:false};
+  });
+  window.addEventListener('pointermove', e=>{
+    if(!drag) return;
+    const dy = e.clientY - drag.y;
+    if(!drag.moved){
+      if(Math.abs(dy) < 6) return;
+      drag.moved = true; drag.suppressClick = true;
+      drag.el.classList.add('dragging');
+    }
+    const items = [...list.querySelectorAll('.qitem')];
+    const H = items[0].offsetHeight || 36;
+    const n = items.length;
+    const to = Math.max(0, Math.min(n-1, drag.i + Math.round(dy/H)));
+    drag.to = to;
+    drag.el.style.transform = 'translateY('+dy+'px)';
+    items.forEach((el,j)=>{
+      if(j===drag.i) return;
+      el.style.transform = (j>drag.i && j<=to) ? 'translateY(-'+H+'px)'
+                        : (j<drag.i && j>=to) ? 'translateY('+H+'px)' : '';
+    });
+  });
+  window.addEventListener('pointerup', ()=>{
+    if(!drag) return;
+    const {i, to, moved, suppressClick} = drag;
+    drag = null;
+    list.querySelectorAll('.qitem').forEach(el=>{ el.style.transform=''; el.classList.remove('dragging'); });
+    if(moved && to!=null && to!==i) queueMove(i, to);
+  });
+})();
+function queueMove(from, to){
+  if(from===to || from<0 || to<0 || from>=S.queue.length || to>=S.queue.length) return;
+  const curId = cur() && cur().id;
+  const [it] = S.queue.splice(from,1);
+  S.queue.splice(to,0,it);
+  if(curId){ const ni = S.queue.findIndex(x=>x.id===curId); if(ni>=0) S.qi = ni; }
+  renderQueue(); saveSession(true);
+}
 $('#qClear').onclick = ()=>{ S.queue=[]; S.qi=-1; au.pause(); au.removeAttribute('src'); store.del(LS.last); $('#pbar').hidden=true; renderQueue(); renderArea(); };
 $('#qClose').onclick = closeQueue;
 $('#scrim').onclick = closeQueue;
@@ -960,6 +1039,7 @@ function playFromCard(card){
   const tid = card.dataset.tid; if(!tid) return;
   let list, idx;
   if(S.view==='favs'){ list=S.favs; }
+  else if(S.view==='hist'){ list=S.hist; }
   else if(S.view==='pldetail'){ const pl=S.pls.find(p=>p.id===S.plOpen); list=pl?pl.tracks:[]; }
   else list=S.tracks;
   idx = list.findIndex(x=>x.id===tid);
@@ -1069,7 +1149,7 @@ $('#tags').addEventListener('click', e=>{
   loadTracks();
 });
 function setTabs(){
-  const map={discover:'#tabDiscover',favs:'#tabFavs',pls:'#tabPls'};
+  const map={discover:'#tabDiscover',favs:'#tabFavs',pls:'#tabPls',hist:'#tabHist'};
   document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));
   const sel = S.view==='pldetail'?null:map[S.view];
   if(sel) $(sel).classList.add('on');
@@ -1077,6 +1157,7 @@ function setTabs(){
 $('#tabDiscover').onclick = ()=>{ S.view='discover'; setTabs(); loadTracks(); };
 $('#tabFavs').onclick = ()=>{ S.view='favs'; setTabs(); renderArea(); updSrcLine(); };
 $('#tabPls').onclick = ()=>{ S.view='pls'; setTabs(); renderArea(); updSrcLine(); };
+$('#tabHist').onclick = ()=>{ S.view='hist'; setTabs(); renderArea(); updSrcLine(); };
 
 /* ================= theme / lang / toast ================= */
 const THEME_ICONS = {
@@ -1145,7 +1226,7 @@ document.addEventListener('keydown', e=>{
   else if(getCidAny()){ loadTracks(); }
   else if(!restored){ openSetup(); }
   updSrcLine();
-  window.__SG = {S, playList, loadTracks, normTrack, au};
+  window.__SG = {S, playList, loadTracks, loadCur, queueMove, normTrack, au};
 })();
 </script>
 </body>

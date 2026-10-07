@@ -28,8 +28,9 @@ python3 -m http.server 8979
 - NC 过滤：请求带 `ccnc=false` + 客户端按 license URL 二次校验（纵深防御）
 - 亮暗主题（auto/light/dark）、中英双语（`?lang=` 深链）、Media Session 锁屏控制
 - 无限滚动分页（IntersectionObserver + scroll 兜底）、骨架屏加载
+- 最近播放（60 条去重历史，可清空）；队列点击跳播、鼠标拖拽排序（正在播曲目身份跟随）
 - 点艺术家名直达搜索；分享当前曲目（Web Share API → 剪贴板兜底）
 - 会话恢复：回到站点接着上次听（不自动播放、进度还原）；footer 常驻反馈/下架入口
-- `?mock=1` 示例模式：内置 80 首演示曲目（SoundHelix 测试音频），用于无 key 冒烟测试
+- PWA 可安装（manifest + 图标）；`?mock=1` 示例模式：内置 80 首演示曲目用于无 key 冒烟测试
 
 Part of [kuige.me](https://kuige.me/)

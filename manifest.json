@@ -1,0 +1,14 @@
+{
+  "name": "SongGems — Free CC Music Player",
+  "short_name": "SongGems",
+  "description": "Stream thousands of free tracks by indie artists under Creative Commons licenses.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#12101d",
+  "theme_color": "#7c5cf0",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
