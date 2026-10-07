@@ -27,6 +27,9 @@ python3 -m http.server 8979
 - 署名内建：`license_ccurl` 解析为 CC BY / BY-SA / CC0 / NC 徽标并链接授权全文
 - NC 过滤：请求带 `ccnc=false` + 客户端按 license URL 二次校验（纵深防御）
 - 亮暗主题（auto/light/dark）、中英双语（`?lang=` 深链）、Media Session 锁屏控制
-- `?mock=1` 示例模式：内置 10 首演示曲目（SoundHelix 测试音频），用于无 key 冒烟测试
+- 无限滚动分页（IntersectionObserver + scroll 兜底）、骨架屏加载
+- 点艺术家名直达搜索；分享当前曲目（Web Share API → 剪贴板兜底）
+- 会话恢复：回到站点接着上次听（不自动播放、进度还原）；footer 常驻反馈/下架入口
+- `?mock=1` 示例模式：内置 80 首演示曲目（SoundHelix 测试音频），用于无 key 冒烟测试
 
 Part of [kuige.me](https://kuige.me/)
