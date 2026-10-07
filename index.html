@@ -422,7 +422,7 @@ const S = {
   favs:store.get(LS.favs,[]), pls:store.get(LS.pls,[]),
   hist:store.get(LS.hist,[]),
   allowNC:store.get(LS.nc,false),
-  plTarget:null, seeking:false
+  plTarget:null, seeking:false, loadTimer:0
 };
 const au = new Audio();
 au.preload = 'metadata';
@@ -471,7 +471,8 @@ en:{
   fq5:'Why can\u2019t I find mainstream commercial artists?', fa5:'The library is deliberately independent and Creative Commons only — that is exactly what makes the site simple, ad-free and 100% legal.',
   playA:'Play', pauseA:'Pause', errSkip:'Track failed to load — skipping', searchT:'Results for \u201c{q}\u201d', discT:'Discover', by:'by',
   share:'Share', linkCopied:'Link copied \u2713', report:'Report an issue / request takedown',
-  prevA:'Previous', nextA:'Next', shuffleA:'Shuffle', repeatA:'Repeat', queueA:'Queue', volA:'Volume'
+  prevA:'Previous', nextA:'Next', shuffleA:'Shuffle', repeatA:'Repeat', queueA:'Queue', volA:'Volume',
+  playErr:'Could not play — please try again', slowNet:'Slow network — still loading\u2026', mutedVol:'Volume is at 0'
 },
 zh:{
   title:'SongGems — 免费在线音乐播放器 · 创作共用曲库',
@@ -512,7 +513,8 @@ zh:{
   fq5:'为什么找不到主流商业歌手？', fa5:'曲库刻意保持独立音乐 + 纯创作共用——这正是本站简单、无广告且百分百合法的原因。',
   playA:'播放', pauseA:'暂停', errSkip:'曲目加载失败——已跳过', searchT:'「{q}」的搜索结果', discT:'发现', by:'· ',
   share:'分享', linkCopied:'链接已复制 ✓', report:'问题反馈 / 下架申请',
-  prevA:'上一首', nextA:'下一首', shuffleA:'随机', repeatA:'循环', queueA:'队列', volA:'音量'
+  prevA:'上一首', nextA:'下一首', shuffleA:'随机', repeatA:'循环', queueA:'队列', volA:'音量',
+  playErr:'无法播放——请再试一次', slowNet:'网络较慢，正在加载…', mutedVol:'当前音量为 0'
 }};
 let lang = 'en';
 const $ = s => document.querySelector(s);
@@ -793,6 +795,12 @@ function addToPl(plId, tr){
 
 /* ================= player ================= */
 function cur(){ return S.queue[S.qi]||null; }
+function tryPlay(){
+  clearTimeout(loadTimer);
+  au.play().catch(()=>{ toast(t('playErr')); });
+  // audible feedback if the stream never starts (slow/blocked network)
+  loadTimer = setTimeout(()=>{ if(!au.paused && au.currentTime < 0.1) toast(t('slowNet')); }, 8000);
+}
 function playList(list, idx){
   S.queue = list.slice(); S.qi = idx; S.errRun = 0;
   loadCur(); $('#pbar').hidden = false; renderQueue();
@@ -807,7 +815,7 @@ function loadCur(autoplay){
     const once = ()=>{ if(au.duration && pos < au.duration - 2){ try{ au.currentTime = pos; }catch(e){} } au.removeEventListener('loadedmetadata', once); };
     au.addEventListener('loadedmetadata', once);
   }
-  if(autoplay) au.play().catch(()=>{});
+  if(autoplay) tryPlay();
   try{ const nx = S.queue[S.qi+1]; pre.src = (nx && nx.audio) || ''; }catch(e){}
   updPlayerUI(); highlightPlaying(); renderQueue();
   saveSession(true);
@@ -840,7 +848,7 @@ function togglePlay(){
     if(S.tracks.length) playList(S.tracks,0);
     return;
   }
-  if(au.paused) au.play().catch(()=>{}); else au.pause();
+  if(au.paused) tryPlay(); else au.pause();
 }
 function next(auto){
   if(!S.queue.length) return;
@@ -882,7 +890,8 @@ function updPlayerUI(){
     });
   }
 }
-au.addEventListener('play', updPlayerUI);
+au.addEventListener('play', ()=>{ updPlayerUI(); if(au.volume === 0) toast(t('mutedVol')); });
+au.addEventListener('playing', ()=>clearTimeout(loadTimer));
 au.addEventListener('pause', ()=>{ updPlayerUI(); saveSession(true); });
 au.addEventListener('timeupdate', ()=>saveSession(false));
 window.addEventListener('pagehide', ()=>saveSession(true));
@@ -900,7 +909,7 @@ au.addEventListener('error', ()=>{
   if(S.errRun < S.queue.length){ toast(t('errSkip')); setTimeout(()=>next(false), 700); }
 });
 if('mediaSession' in navigator){
-  navigator.mediaSession.setActionHandler('play', ()=>au.play().catch(()=>{}));
+  navigator.mediaSession.setActionHandler('play', tryPlay);
   navigator.mediaSession.setActionHandler('pause', ()=>au.pause());
   navigator.mediaSession.setActionHandler('previoustrack', prev);
   navigator.mediaSession.setActionHandler('nexttrack', ()=>next(false));
@@ -1000,6 +1009,7 @@ $('#pRep').onclick = ()=>{ S.repeat=(S.repeat+1)%3; store.set(LS.rep,S.repeat); 
 
 /* ================= area event delegation ================= */
 area().addEventListener('click', e=>{
+  if(e.target.closest('a')) return;              // license / download links navigate, never play
   const artEl = e.target.closest('[data-artist]');
   const card = e.target.closest('.card');
   if(artEl && card && artEl.dataset.artist){
