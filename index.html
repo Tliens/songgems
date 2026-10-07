@@ -596,6 +596,10 @@ async function loadTracks(opts){
     if(append){ S.hasMore = false; S.err = null; } // silent stop at the bottom
   }
   S.loading = false; renderArea(); updSrcLine();
+  // if the sentinel is already on screen after this page rendered (short page or
+  // user was parked at the bottom during the load), keep the chain going
+  const sn = document.getElementById('sentinel');
+  if(sn && !S.err && sn.getBoundingClientRect().top < window.innerHeight + 700) loadTracks({append:true});
 }
 
 /* ================= mock mode (testing / preview) ================= */
