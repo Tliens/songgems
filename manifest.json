@@ -1,7 +1,7 @@
 {
-  "name": "SongGems — Free CC Music Player",
+  "name": "SongGems · 经典歌曲年榜",
   "short_name": "SongGems",
-  "description": "Stream thousands of free tracks by indie artists under Creative Commons licenses.",
+  "description": "华语与世界经典歌曲年度榜单导航，点击跳转 QQ 音乐网页版播放。纯元数据导航，不存储任何音频。",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

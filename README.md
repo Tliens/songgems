@@ -1,37 +1,27 @@
-# SongGems — Free CC Music Player & Discovery
+# SongGems · 经典歌曲年榜
 
-免费在线音乐播放器：全部曲目来自 [Jamendo](https://www.jamendo.com/) 官方公开 API，
-由独立音乐人以 Creative Commons 授权发布——搜索、播放队列、收藏与歌单（本地存储），
-逐曲展示授权徽标与署名链接；默认过滤 NC（非商业）曲目，未来商业化也安全。
+华语与世界经典歌曲的**年度榜单导航站**：只收录歌名、歌手与年份，按年份编排、区分华语/世界，
+点击任意歌曲跳转 **QQ 音乐网页版**播放。本站**不存储、不解析任何音频**——纯元数据导航，
+播放与版权全部由正版授权平台承担。
 
-单文件 `index.html`，零外部 JS 依赖、零构建。线上：<https://songgems.kuige.me/>
+线上：<https://songgems.kuige.me/>
 
-## 接入自己的 API key
+## 为什么是这个形态
 
-整站通过 Jamendo 官方 API 流式播放（不转存任何音频文件）：
+曾经试过"开放曲库 + Jamendo API 在线播放"，验证跑通后重新定位：主流曲库无解、CC 曲库受众太窄，
+而**"经典歌曲回顾 + 跳正版平台播放"的纯元数据导航**既满足情怀需求，又完全没有版权包袱——
+这也是 kuige.me 矩阵里 GitHub Gems / X热榜 的同一套成熟模式。
 
-1. 在 <https://developer.jamendo.com/v3.0/apps> 免费注册一个应用，拿到 `client_id`
-2. 二选一：
-   - 写进 `index.html` 顶部的 `JAMENDO_CLIENT_ID` 常量（对所有访客生效，推荐）
-   - 或访客在页面 ⚙ 设置里自己粘贴（只存浏览器 localStorage）
+## 维护歌单
 
-## 本地预览 / 测试
+- 数据唯一来源：`scripts/gen.py` 的 `SONGS` 数组（120 首起建，持续补充）
+- 加歌/改数据后运行 `python3 scripts/gen.py` 重建 index.html 标记区，commit + push 即可（约 1 分钟生效）
+- 年份以歌曲/专辑发行年为准（页面已注明允许 ±1 年出入）
 
-```bash
-python3 -m http.server 8979
-# http://localhost:8979/?mock=1  ← 内置示例曲目，无需 key 即可体验完整 UI 与播放
-```
+## 技术
 
-## 技术要点
-
-- 署名内建：`license_ccurl` 解析为 CC BY / BY-SA / CC0 / NC 徽标并链接授权全文
-- NC 过滤：请求带 `ccnc=false` + 客户端按 license URL 二次校验（纵深防御）
-- 亮暗主题（auto/light/dark）、中英双语（`?lang=` 深链）、Media Session 锁屏控制
-- 无限滚动分页（IntersectionObserver + scroll 兜底）、骨架屏加载
-- 最近播放（60 条去重历史，可清空）；队列点击跳播、鼠标拖拽排序（正在播曲目身份跟随）
-- **歌单分享/导入**：任意歌单一键生成 `#p=<code>` 分享链接，他人粘贴即可导入——曲目按 ID 从同一个授权曲库取回，社区共享歌单不碰任何未授权音源
-- 点艺术家名直达搜索；分享当前曲目（Web Share API → 剪贴板兜底）
-- 会话恢复：回到站点接着上次听（不自动播放、进度还原）；footer 常驻反馈/下架入口
-- PWA 可安装（manifest + 图标）；`?mock=1` 示例模式：内置 80 首演示曲目用于无 key 冒烟测试
+- 单文件 index.html + 静态预渲染卡片（爬虫可见），客户端只做筛选（区域/年代/搜索）
+- 中英双语（中文默认，`?lang=en` 深链）、亮暗主题、PWA 可安装
+- 零外部依赖、零构建；Cloudflare Web Analytics
 
 Part of [kuige.me](https://kuige.me/)
