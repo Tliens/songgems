@@ -20,7 +20,6 @@ SONGS = [
     {"r":"cn","y":1984,"n":"似水流年","a":"梅艳芳"},
     {"r":"cn","y":1985,"n":"Monica","a":"张国荣","tag":"粤语快歌里程碑"},
     {"r":"cn","y":1985,"n":"狼","a":"齐秦"},
-    {"r":"cn","y":1986,"n":"一无所有","a":"崔健","tag":"中国摇滚开山之作"},
     {"r":"cn","y":1987,"n":"一场游戏一场梦","a":"王杰"},
     {"r":"cn","y":1987,"n":"大约在冬季","a":"齐秦"},
     {"r":"cn","y":1988,"n":"恋曲1990","a":"罗大佑"},
@@ -195,7 +194,6 @@ SONGS = [
     {"r":"cn","y":1989,"n":"花房姑娘","a":"崔健"},
     {"r":"cn","y":1990,"n":"我是一只小小鸟","a":"赵传"},
     {"r":"cn","y":1990,"n":"对你爱不完","a":"郭富城"},
-    {"r":"cn","y":1990,"n":"把悲伤留给自己","a":"陈升"},
     {"r":"cn","y":1990,"n":"你知道我在等你吗","a":"张洪量"},
     {"r":"cn","y":1991,"n":"无地自容","a":"黑豹","tag":"中国摇滚代表作"},
     {"r":"cn","y":1991,"n":"梦回唐朝","a":"唐朝乐队"},
@@ -534,6 +532,25 @@ MARK_L = "<!--SONGS:START-->"
 MARK_R = "<!--SONGS:END-->"
 DATA_L = "/*SONGSDATA:START*/"
 DATA_R = "/*SONGSDATA:END*/"
+CACHE_FILE = "scripts/covers.json"
+
+# 搜索匹配不到/匹配错误的曲目，在此手工指定 albumMid（QQ音乐专辑hash）
+COVER_OVERRIDE = {
+    "铁血丹心|罗文&甄妮": "000zzpBQ2MHa5Q",
+    "潇洒走一回|叶倩文": "004elsWz3Aa9I9",
+    "梦回唐朝|唐朝乐队": "003HIIUT2HzSud",
+    "回到拉萨|郑钧": "001OGeUa2raENA",
+    "K歌之王|陈奕迅": "004WcjmQ3fOaN9",
+    "Super Star|S.H.E": "000T16q900CwBg",
+    "The Power of Love|Huey Lewis and the News": "0027USG90EvKmk",
+    "Faith|George Michael": "0025oXfJ33YfWZ",
+    "Pour Some Sugar on Me|Def Leppard": "001cgkUU0TQszk",
+    "(Everything I Do) I Do It for You|Bryan Adams": "000iQbuI10xVHa",
+    "My Heart Will Go On|Celine Dion": "003UrQPD42gZkV",
+    "Smooth|Santana feat. Rob Thomas": "002m2xkC4XzdmQ",
+    "Closer|The Chainsmokers feat. Halsey": "001rWGUJ3Gvypx",
+    "两只蝴蝶|庞龙": "001VUVMg2zA3AZ",
+}
 
 def qq_url(n, a):
     return "https://y.qq.com/n/ryqq/search?w=" + urllib.parse.quote(f"{n} {a}")
@@ -541,37 +558,133 @@ def qq_url(n, a):
 def esc(s):
     return s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace('"',"&quot;")
 
+def singer_match(artist, singers):
+    a = artist.lower()
+    if "群星" in a:
+        return True
+    names = " ".join(singers).lower()
+    tokens = [t.strip().lower() for t in re.split(r"&|,|feat\.?", a) if len(t.strip()) >= 2]
+    tokens.append(a.strip().lower())
+    return any(t in names for t in tokens)
+
+def load_cache():
+    try:
+        import json
+        return json.load(open(CACHE_FILE, encoding="utf-8"))
+    except Exception:
+        return {}
+
+def fetch_meta(n, a, cache):
+    import json, time, urllib.request
+    key = f"{n}|{a}"
+    if key in COVER_OVERRIDE:  # 人工覆盖优先于缓存（缓存里可能存着未匹配）
+        m = {"album": COVER_OVERRIDE[key], "smid": "", "songmid": "", "singer": "(override)"}
+        cache[key] = m
+        return m
+    if key in cache:
+        return cache[key]
+    w = urllib.parse.quote(f"{n} {a}")
+    url = f"https://c.y.qq.com/soso/fcgi-bin/client_search_cp?w={w}&format=json&limit=5"
+    meta = None
+    try:
+        req = urllib.request.Request(url, headers={
+            "Referer": "https://y.qq.com/",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        })
+        # 走系统代理时部分请求会挂起，6 秒超时兜底
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            d = json.loads(resp.read().decode("utf-8", "ignore"))
+        for s in (d.get("data") or {}).get("song", {}).get("list") or []:
+            singers = [x.get("name", "") for x in (s.get("singer") or [])]
+            if singer_match(a, singers):
+                meta = {
+                    "album": s.get("albummid", ""),
+                    "smid": (s.get("singer") or [{}])[0].get("mid", ""),
+                    "songmid": s.get("songmid", ""),
+                    "singer": "/".join(singers),
+                }
+                break
+    except Exception:
+        pass  # 失败也缓存 None，避免反复打失败请求
+    cache[key] = meta
+    return meta
+
+def prefetch_all(cache):
+    from concurrent.futures import ThreadPoolExecutor
+    todo = [s for s in SONGS if f'{s["n"]}|{s["a"]}' not in cache]
+    print(f"fetching meta for {len(todo)} songs (6 workers)...", flush=True)
+    done = [0]
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        futures = {ex.submit(fetch_meta, s["n"], s["a"], cache): s for s in todo}
+        for f in futures:
+            f.result()
+            done[0] += 1
+            if done[0] % 50 == 0 or done[0] == len(todo):
+                print(f"  {done[0]}/{len(todo)}", flush=True)
+                try:
+                    import json
+                    open(CACHE_FILE, "w", encoding="utf-8").write(json.dumps(cache, ensure_ascii=False))
+                except Exception:
+                    pass
+
 def build():
+    import json
+    cache = load_cache()
+    prefetch_all(cache)
     html = open("index.html", encoding="utf-8").read()
     # 按 (region, year) 分组，年内保持精选顺序
     blocks = {"cn": [], "w": []}
     seen = {}
+    misses = []
     for r in ("cn", "w"):
         years = sorted({s["y"] for s in SONGS if s["r"] == r})
         for y in years:
             items = [s for s in SONGS if s["r"] == r and s["y"] == y]
             lis = []
             for i, s in enumerate(items, 1):
+                meta = fetch_meta(s["n"], s["a"], cache) or {}
+                if not meta.get("album"):
+                    misses.append(f'{s["y"]} {s["n"]} - {s["a"]}')
                 q = qq_url(s["n"], s["a"])
+                if meta.get("songmid"):
+                    q = f"https://y.qq.com/n/ryqq/songDetail/{meta['songmid']}"
+                cov = (f'https://y.gtimg.cn/music/photo_new/T002R300x300M000{meta["album"]}.jpg'
+                       if meta.get("album") else "")
+                av = (f'https://y.gtimg.cn/music/photo_new/T001R300x300M000{meta["smid"]}.jpg'
+                      if meta.get("smid") else "")
                 tag = f'<span class="tag">{esc(s["tag"])}</span>' if s.get("tag") else ""
+                cov_img = (f'<img loading="lazy" src="{esc(cov)}" alt="" onerror="this.classList.add(\'bad\')">'
+                           if cov else '<img class="bad" alt="">')
+                av_img = (f'<img class="av" loading="lazy" src="{esc(av)}" alt="" onerror="this.classList.add(\'bad\')">'
+                          if av else "")
                 lis.append(
                     f'<li data-y="{y}" data-search="{esc((s["n"]+" "+s["a"]).lower())}">'
+                    f'<span class="cov">{cov_img}</span>'
                     f'<span class="rk">{i}</span>'
                     f'<span class="tx"><span class="tn">{esc(s["n"])}</span>'
-                    f'<span class="ta">{esc(s["a"])}{tag}</span></span>'
+                    f'<span class="ta">{av_img}{esc(s["a"])}{tag}</span></span>'
                     f'<a class="qq" href="{q}" target="_blank" rel="noopener" data-en="Play on QQ Music ↗">QQ 音乐播放 ↗</a></li>'
                 )
             blocks[r].append(f'<section class="yr" data-year="{y}"><h3>{y}</h3><ol class="sc">{"".join(lis)}</ol></section>')
+    import json as J
+    try:
+        open(CACHE_FILE, "w", encoding="utf-8").write(J.dumps(cache, ensure_ascii=False, indent=0))
+    except Exception as e:
+        print("  ! cache write failed:", e)
     new_cards = (MARK_L + '<div class="yrset" id="setCN">' + "".join(blocks["cn"]) + "</div>"
                  + '<div class="yrset" id="setW" hidden>' + "".join(blocks["w"]) + "</div>" + MARK_R)
     html = re.sub(re.escape(MARK_L) + ".*?" + re.escape(MARK_R), lambda m: new_cards, html, flags=re.S)
     data = [{"r":s["r"],"y":s["y"],"n":s["n"],"a":s["a"],**( {"tag":s["tag"]} if s.get("tag") else {} )} for s in SONGS]
-    import json as J
     new_data = DATA_L + J.dumps(data, ensure_ascii=False) + DATA_R
     html = re.sub(re.escape(DATA_L) + ".*?" + re.escape(DATA_R), lambda m: new_data, html, flags=re.S)
     open("index.html", "w", encoding="utf-8").write(html)
     cn = sum(1 for s in SONGS if s["r"]=="cn"); w = len(SONGS)-cn
     print(f"rebuilt: {len(SONGS)} songs (华语 {cn} / 世界 {w}), {len(blocks['cn'])}+{len(blocks['w'])} year sections")
+    print(f"covers: {len(SONGS)-len(misses)}/{len(SONGS)} matched")
+    if misses:
+        print("未匹配（可在 COVER_OVERRIDE 手工指定 albumMid）:")
+        for m in misses:
+            print("  -", m)
 
 if __name__ == "__main__":
     build()

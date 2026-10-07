@@ -14,7 +14,7 @@
 
 ## 维护歌单
 
-- 数据唯一来源：`scripts/gen.py` 的 `SONGS` 数组（120 首起建，持续补充）
+- 数据唯一来源：`scripts/gen.py` 的 `SONGS` 数组（499 首起建，持续补充）
 - 加歌/改数据后运行 `python3 scripts/gen.py` 重建 index.html 标记区，commit + push 即可（约 1 分钟生效）
 - 年份以歌曲/专辑发行年为准（页面已注明允许 ±1 年出入）
 
