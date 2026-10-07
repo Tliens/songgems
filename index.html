@@ -472,7 +472,8 @@ en:{
   playA:'Play', pauseA:'Pause', errSkip:'Track failed to load — skipping', searchT:'Results for \u201c{q}\u201d', discT:'Discover', by:'by',
   share:'Share', linkCopied:'Link copied \u2713', report:'Report an issue / request takedown',
   prevA:'Previous', nextA:'Next', shuffleA:'Shuffle', repeatA:'Repeat', queueA:'Queue', volA:'Volume',
-  playErr:'Could not play — please try again', slowNet:'Slow network — still loading\u2026', mutedVol:'Volume is at 0'
+  playErr:'Could not play — please try again', slowNet:'Slow network — still loading\u2026', mutedVol:'Volume is at 0',
+  libBusy:'The music library is busy right now — tap retry.'
 },
 zh:{
   title:'SongGems — 免费在线音乐播放器 · 创作共用曲库',
@@ -514,7 +515,8 @@ zh:{
   playA:'播放', pauseA:'暂停', errSkip:'曲目加载失败——已跳过', searchT:'「{q}」的搜索结果', discT:'发现', by:'· ',
   share:'分享', linkCopied:'链接已复制 ✓', report:'问题反馈 / 下架申请',
   prevA:'上一首', nextA:'下一首', shuffleA:'随机', repeatA:'循环', queueA:'队列', volA:'音量',
-  playErr:'无法播放——请再试一次', slowNet:'网络较慢，正在加载…', mutedVol:'当前音量为 0'
+  playErr:'无法播放——请再试一次', slowNet:'网络较慢，正在加载…', mutedVol:'当前音量为 0',
+  libBusy:'曲库此刻有点忙——点「重试」再试一次。'
 }};
 let lang = 'en';
 const $ = s => document.querySelector(s);
@@ -576,14 +578,26 @@ async function loadTracks(opts){
   const my = ++S.reqId;
   const offset = append ? S.tracks.length : 0;
   if(!append){ S.loading = true; S.err = null; renderArea(); }
-  const p = {limit:PAGE, offset, imagesize:200, audioformat:'mp32'};
-  if(S.tag) p.fuzzytags = S.tag;
-  if(S.q) p.search = S.q; else p.order = S.order;
-  if(!S.allowNC) p.ccnc = 'false';
+  const p0 = {offset, imagesize:200, audioformat:'mp32'};
+  // Jamendo's API intermittently returns success with 0 results — fall back
+  // through alternate orderings (default view), or retry once (append/search).
+  let attempts;
+  if(S.q || S.tag) attempts = [null];
+  else if(offset > 0) attempts = [S.order, S.order];
+  else attempts = [S.order, 'popularity_total', 'popularity_month'];
+  let list = [], rawLen = 0;
   try{
-    let list = await api('tracks', p);
-    if(my !== S.reqId) return;             // a newer request superseded this one
-    const rawLen = list.length;
+    for(let i = 0; i < attempts.length; i++){
+      const p = {limit:PAGE, ...p0};
+      if(S.tag) p.fuzzytags = S.tag;
+      if(S.q) p.search = S.q; else if(attempts[i]) p.order = attempts[i];
+      if(!S.allowNC) p.ccnc = 'false';
+      list = await api('tracks', p);
+      if(my !== S.reqId) return;             // a newer request superseded this one
+      rawLen = list.length;
+      if(rawLen > 0 || i === attempts.length - 1) break;
+      await new Promise(r=>setTimeout(r, 400));
+    }
     if(!S.allowNC) list = list.filter(ncOk);
     if(append){
       const have = new Set(S.tracks.map(x=>x.id));
@@ -688,7 +702,11 @@ function renderArea(){
       $('#btnRetry').onclick = ()=>loadTracks(); return;
     }
     if(!S.tracks.length){
-      box.innerHTML = rheadHtml(titleFor(), 0)+'<div class="statebox"><div class="big">\uD83C\uDFB5</div><p>'+esc(t('noRes'))+'</p></div>'; return;
+      const abnormal = !S.q && !S.tag;   // default view empty = API flake, not a real miss
+      box.innerHTML = rheadHtml(titleFor(), 0)+'<div class="statebox"><div class="big">\uD83C\uDFB5</div><p>'+esc(abnormal?t('libBusy'):t('noRes'))+'</p>'+
+        (abnormal?'<button class="mbtn pri errbtn" id="btnRetry2">'+esc(t('retry'))+'</button>':'')+'</div>';
+      const rb = $('#btnRetry2'); if(rb) rb.onclick = ()=>loadTracks();
+      return;
     }
     box.innerHTML = rheadHtml(titleFor(), S.tracks.length)+'<div class="grid">'+S.tracks.map(cardHtml).join('')+'</div>'+
       (S.hasMore?'<div id="sentinel" style="height:2px" aria-hidden="true"></div>':'');
