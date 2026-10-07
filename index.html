@@ -390,6 +390,19 @@ input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;bac
   </div>
 </div>
 
+<!-- import playlist modal -->
+<div class="modal" id="mPlImp" hidden>
+  <div class="mbox">
+    <h3 data-i18n="plImport">Import playlist</h3>
+    <p class="md" data-i18n="plImportD">Paste a shared SongGems playlist link or code. Tracks are fetched from the same licensed library.</p>
+    <textarea id="inpPlImp" rows="4" data-i18n-ph="plImportPh" placeholder="https://songgems.kuige.me/#p=…" style="width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--tx);font:inherit;resize:vertical"></textarea>
+    <div class="mrow">
+      <button class="mbtn" id="btnPlImpCancel" data-i18n="close">Close</button>
+      <button class="mbtn pri" id="btnPlImpGo" data-i18n="plImportGo">Import</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast" role="status"></div>
 
 <noscript><p style="text-align:center;padding:40px">SongGems needs JavaScript to stream music.</p></noscript>
@@ -473,7 +486,10 @@ en:{
   share:'Share', linkCopied:'Link copied \u2713', report:'Report an issue / request takedown',
   prevA:'Previous', nextA:'Next', shuffleA:'Shuffle', repeatA:'Repeat', queueA:'Queue', volA:'Volume',
   playErr:'Could not play — please try again', slowNet:'Slow network — still loading\u2026', mutedVol:'Volume is at 0',
-  libBusy:'The music library is busy right now — tap retry.'
+  libBusy:'The music library is busy right now — tap retry.',
+  plShare:'Share', plImport:'Import', plImportD:'Paste a shared SongGems playlist link or code. Tracks are fetched from the same licensed library.',
+  plImportPh:'https://songgems.kuige.me/#p=\u2026', plImportGo:'Import',
+  plImported:'Imported \u201c{n}\u201d \u2713', plBad:'Couldn\u2019t read that code'
 },
 zh:{
   title:'SongGems — 免费在线音乐播放器 · 创作共用曲库',
@@ -516,7 +532,10 @@ zh:{
   share:'分享', linkCopied:'链接已复制 ✓', report:'问题反馈 / 下架申请',
   prevA:'上一首', nextA:'下一首', shuffleA:'随机', repeatA:'循环', queueA:'队列', volA:'音量',
   playErr:'无法播放——请再试一次', slowNet:'网络较慢，正在加载…', mutedVol:'当前音量为 0',
-  libBusy:'曲库此刻有点忙——点「重试」再试一次。'
+  libBusy:'曲库此刻有点忙——点「重试」再试一次。',
+  plShare:'分享', plImport:'导入歌单', plImportD:'粘贴他人分享的 SongGems 歌单链接或分享码，曲目将从同一个授权曲库取回。',
+  plImportPh:'https://songgems.kuige.me/#p=…', plImportGo:'导入',
+  plImported:'已导入「{n}」✓', plBad:'无法识别这个分享码'
 }};
 let lang = 'en';
 const $ = s => document.querySelector(s);
@@ -732,19 +751,23 @@ function renderArea(){
     if(!S.pls.length) inner = '<p style="color:var(--tx2)">'+esc(t('emptyPls'))+'</p>';
     else inner = '<div class="grid">'+S.pls.map(plCard).join('')+'</div>';
     box.innerHTML = rheadHtml(titleFor(), S.pls.length||null) + inner +
-      '<div style="display:flex;gap:8px;margin-top:18px;max-width:420px">'+
-      '<input type="text" id="inpPlHome" placeholder="'+esc(t('plNamePh'))+'" style="flex:1;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--tx)">'+
-      '<button class="mbtn pri" id="btnPlHome">'+esc(t('plCreate'))+'</button></div>';
+      '<div style="display:flex;gap:8px;margin-top:18px;max-width:520px;flex-wrap:wrap">'+
+      '<input type="text" id="inpPlHome" placeholder="'+esc(t('plNamePh'))+'" style="flex:1;min-width:180px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--tx)">'+
+      '<button class="mbtn pri" id="btnPlHome">'+esc(t('plCreate'))+'</button>'+
+      '<button class="mbtn lnk" id="btnPlImport">'+esc(t('plImport'))+'</button></div>';
     $('#btnPlHome').onclick = ()=>{ const v=$('#inpPlHome').value.trim(); if(v){ createPl(v); $('#inpPlHome').value=''; } };
+    $('#btnPlImport').onclick = ()=>{ $('#inpPlImp').value=''; $('#mPlImp').hidden=false; $('#inpPlImp').focus(); };
   }
   else if(S.view==='pldetail'){
     const pl = S.pls.find(p=>p.id===S.plOpen);
     if(!pl){ box.innerHTML='<div class="statebox"><p>…</p></div>'; return; }
     const back = '<div class="rhead"><h2>\uD83C\uDFB6 '+esc(pl.name)+'</h2><span class="rc">'+esc(t('nTr',{n:pl.tracks.length}))+'</span>'+
+      '<button class="mbtn" id="btnPlShare" style="padding:4px 10px;font-size:12px" title="'+esc(t('plShare'))+'">'+esc(t('plShare'))+'</button>'+
       '<button class="mbtn" id="btnPlBack" style="padding:4px 10px;font-size:12px">← '+esc(t('tabPls'))+'</button></div>';
     if(!pl.tracks.length){ box.innerHTML = back+'<div class="statebox"><div class="big">\uD83C\uDFB6</div><p>'+esc(t('emptyPls'))+'</p></div>'; return; }
     box.innerHTML = back+'<div class="grid">'+pl.tracks.map(cardHtml).join('')+'</div>';
     $('#btnPlBack').onclick = ()=>{ S.view='pls'; setTabs(); renderArea(); updSrcLine(); };
+    $('#btnPlShare').onclick = ()=>sharePl(pl);
   }
   highlightPlaying();
 }
@@ -1232,6 +1255,71 @@ function toast(msg){
   clearTimeout(toastId); toastId=setTimeout(()=>el.classList.remove('on'),2200);
 }
 
+/* ================= playlist share / import ================= */
+function b64uEnc(s){
+  const bytes = new TextEncoder().encode(s);
+  let bin = ''; bytes.forEach(b=>bin += String.fromCharCode(b));
+  return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function b64uDec(s){
+  s = s.replace(/-/g,'+').replace(/_/g,'/');
+  while(s.length % 4) s += '=';
+  return new TextDecoder().decode(Uint8Array.from(atob(s), c=>c.charCodeAt(0)));
+}
+function sharePl(pl){
+  if(!pl || !pl.tracks.length){ toast(t('emptyPls')); return; }
+  const code = b64uEnc(JSON.stringify({v:1, n:pl.name, t:pl.tracks.map(x=>x.id)}));
+  const url = location.origin + location.pathname + '#p=' + code;
+  const done = ()=>toast(t('linkCopied'));
+  const viaClipboard = ()=>navigator.clipboard.writeText(url).then(done).catch(()=>{});
+  if(navigator.share){ navigator.share({title:pl.name, text:pl.name+' · SongGems', url}).then(()=>{}, viaClipboard); }
+  else viaClipboard();
+}
+function parsePlCode(raw){
+  if(!raw) return null;
+  let s = raw.trim();
+  const m = s.match(/#p=([A-Za-z0-9\-_]+)/);
+  if(m) s = m[1];
+  try{
+    const d = JSON.parse(b64uDec(s));
+    if(d && Array.isArray(d.t) && d.t.length && d.t.every(x=>/^[a-z0-9]+$/i.test(String(x)))){
+      return {name: String(d.n || 'Playlist').slice(0,60), ids: d.t.map(String).slice(0,100)};
+    }
+  }catch(e){}
+  return null;
+}
+async function importPl(parsed){
+  const ids = parsed.ids;
+  const chunks = [];
+  for(let i=0;i<ids.length;i+=50) chunks.push(ids.slice(i, i+50));
+  const found = [];
+  for(const chunk of chunks){
+    let list = [];
+    try{ list = await api('tracks', {id: chunk.join(' '), limit: chunk.length, imagesize:200, audioformat:'mp32'}); }
+    catch(e){ /* skip failed chunk */ }
+    found.push(...list);
+  }
+  const byId = new Map(found.map(x=>[x.id, x]));
+  const tracks = ids.map(id=>byId.get(id)).filter(Boolean);
+  if(!tracks.length) return null;
+  const pl = createPl(parsed.name);
+  pl.tracks = tracks;
+  store.set(LS.pls, S.pls);
+  return pl;
+}
+$('#btnPlImpGo').onclick = async ()=>{
+  const parsed = parsePlCode($('#inpPlImp').value);
+  if(!parsed){ toast(t('plBad')); return; }
+  const btn = $('#btnPlImpGo'); btn.textContent = '…';
+  const pl = await importPl(parsed);
+  btn.textContent = t('plImportGo');
+  $('#mPlImp').hidden = true;
+  if(!pl){ toast(t('plBad')); return; }
+  toast(t('plImported', {n: pl.name}));
+  S.view='pldetail'; S.plOpen=pl.id; setTabs(); renderArea(); updSrcLine();
+};
+$('#btnPlImpCancel').onclick = ()=>{ $('#mPlImp').hidden = true; };
+
 /* keyboard */
 document.addEventListener('keydown', e=>{
   const tag=(e.target.tagName||'').toLowerCase();
@@ -1258,6 +1346,15 @@ document.addEventListener('keydown', e=>{
   else if(getCidAny()){ loadTracks(); }
   else if(!restored){ openSetup(); }
   updSrcLine();
+  // shared playlist link (#p=<code>) → offer import
+  if(location.hash.startsWith('#p=')){
+    const parsed = parsePlCode(location.hash);
+    if(parsed){
+      $('#inpPlImp').value = location.hash.slice(1);
+      $('#mPlImp').hidden = false;
+      history.replaceState(null, '', location.pathname + location.search);
+    }
+  }
   window.__SG = {S, playList, loadTracks, loadCur, queueMove, normTrack, au};
 })();
 </script>
